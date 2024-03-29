@@ -96,20 +96,52 @@ def CreateMainPage(AccountNumber):
     loginFrame.place(relx=0.5, rely=0.5, anchor=tkinter.CENTER)
     AccountNumFont = customtkinter.CTkFont('Sans-serif', 40)
     ChequingWordFont = customtkinter.CTkFont('Sans-serif', 20)
-    AccountNumber = customtkinter.CTkLabel(master=loginFrame, text=AccountNumber, font=AccountNumFont)
+    AccountNumber = customtkinter.CTkLabel(master=loginFrame, text=AccountNumber, font=AccountNumFont, text_color="#872570")
     AccountNumber.place(relx=0.5, y=80, anchor=tkinter.CENTER)
-    ChequingWordLabel = customtkinter.CTkLabel(master=loginFrame, text="Chequing", font=ChequingWordFont)
+    ChequingWordLabel = customtkinter.CTkLabel(master=loginFrame, text="Chequing", font=ChequingWordFont, text_color="#872570")
     ChequingWordLabel.place(relx=0.5, y=40, anchor=tkinter.CENTER)
 
     #account frame
     accountFrame = customtkinter.CTkFrame(master=loginFrame, width=1010, height=450, fg_color=("#872570", "#872570"))
     accountFrame.place(relx=0.5, y=345, anchor=tkinter.CENTER)
-
+    
     #get account balance from server
-    Balance = '99999.99'
-    BalanceLabel = customtkinter.CTkLabel(master=accountFrame, text="BALANCE", font=ChequingWordFont)
-    BalanceLabel.place(relx=0.5, y=40, anchor=tkinter.CENTER)
-    BalanceNumberLabel = customtkinter.CTkLabel(master=accountFrame, text=Balance, font=AccountNumFont)
-    BalanceNumberLabel.place(relx=0.5, y=80, anchor=tkinter.CENTER)  
+    Balance = 99999.99
 
+    BalanceLabel = customtkinter.CTkLabel(master=accountFrame, text="BALANCE", font=ChequingWordFont, text_color="#001848")
+    BalanceLabel.place(relx=0.5, y=40, anchor=tkinter.CENTER)
+    BalanceNumberLabel = customtkinter.CTkLabel(master=accountFrame, text=Balance, font=AccountNumFont, text_color="#001848")
+    BalanceNumberLabel.place(relx=0.5, y=80, anchor=tkinter.CENTER) 
+    DepositWithdrawText = customtkinter.CTkLabel(master=accountFrame, text="DEPOSIT | WITHDRAW", font=ChequingWordFont, text_color="#001848") 
+    DepositWithdrawText.place(relx=0.5, y=160, anchor=tkinter.CENTER) 
+    amountField = customtkinter.CTkEntry(master=accountFrame, height= 35, width=240, fg_color="#001848",
+                                        placeholder_text_color=("white","white"), border_color=("#872570","#872570"), corner_radius=2, font=ChequingWordFont, border_width=1, placeholder_text="Amount")
+    amountField.place(relx=0.5, y=200, anchor=tkinter.CENTER)
+    #Deposit and Withdraw buttons
+    def Deposit():
+        amountTxt = amountField.get()
+        if(amountTxt.isdigit()):
+            amount = float(amountTxt)
+            ProcessTransaction(AccountNumber, amount, BalanceNumberLabel, accountFrame)
+    def Withdraw():
+        amountTxt = amountField.get()
+        if(amountTxt.isdigit()):
+            amount = float(amountTxt)*-1
+            ProcessTransaction(AccountNumber, amount, BalanceNumberLabel, accountFrame)
+        
+    DepositButton = customtkinter.CTkButton(master =accountFrame, height = 35, width=240, text="Deposit", corner_radius=4,fg_color="transparent", text_color="#001848", 
+                                          font = ChequingWordFont, hover_color="#5a206d", border_color="#001848", border_width= 1, command=Deposit)
+    DepositButton.place(relx=0.5, y=250, anchor=tkinter.CENTER)
+
+    WithdrawButton = customtkinter.CTkButton(master =accountFrame, height = 35, width=240, text="Withdraw", corner_radius=4,fg_color="#001848", text_color="#872570", 
+                                            border_width= 0, font = ChequingWordFont, hover_color="#5a206d", command=Withdraw)
+    WithdrawButton.place(relx=0.5, y=300, anchor=tkinter.CENTER)
+
+def ProcessTransaction(AccountNumber, Amount, BalanceNumberLabel, AccountFrame):
+    #send request
+    print(Amount)
+    
+    #if successful update balance on client app
+    Balance = 10000
+    BalanceNumberLabel.configure(text=Balance)
 CreateLoginPage()
