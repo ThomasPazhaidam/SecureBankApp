@@ -3,14 +3,32 @@ import tkinter
 import customtkinter
 #remember to run [pip install Pillow]
 from PIL import ImageTk, Image
+import socket
+import pickle
 
+#type -> 1 (registration), 2 (transaction), 3 (sign in)
+
+glbDatagram = {
+    "type": 0,
+    "cardNumber": 0,
+    "password": "",
+    "firstName":"",
+    "lastName":'',
+    "balance": 0.0,
+    "txAmount": 0.0,
+    "valid": 0
+}
+
+'''
+Client GUI
+'''
 customtkinter.set_appearance_mode("system")
 customtkinter.set_default_color_theme("dark-blue")
 
 app = customtkinter.CTk()
 app.geometry("1280x720")
 app.title("Secure Bank")
-background = ImageTk.PhotoImage(Image.open("Photos/background.jpg"))
+background = ImageTk.PhotoImage(Image.open("Client/Photos/background.jpg"))
 
 def CreateLoginPage():
     #login page background
@@ -29,9 +47,16 @@ def CreateLoginPage():
     passwordField.place(x=50, y=140)
     def login():
         #authenticate user with account number and password
-        print(usernameField.get())
-        print(passwordField.get())
-        CreateMainPage(usernameField.get())
+        glbDatagram = UpdateDatagram(type = 3, cardNumber=usernameField.get(),password=passwordField.get())
+        client_socket.send(pickle.dumps(glbDatagram))
+        data = client_socket.recv(4096)
+        glbDatagram = pickle.loads(data)
+        if(glbDatagram["valid"]==1):
+            CreateMainPage(usernameField.get(), glbDatagram["balance"])
+        else:
+           failedLabel = customtkinter.CTkLabel(master=loginFrame, font = fieldFont, text= "Login failed.", bg_color="transparent") 
+           failedLabel.place(x=50, y=305)
+
     #login and create user buttons
     LoginButton = customtkinter.CTkButton(master =loginFrame, height = 35, width=220, text="Sign on", corner_radius=4,fg_color="#872570", text_color="#001848", font = fieldFont, hover_color="#5a206d", command=login)
     LoginButton.place(x=50, y=195)
@@ -73,10 +98,8 @@ def CreateRegisterPage():
     def CreateUser():
         if(firstNameField.get()!="" and lastNameField.get()!="" and usernameField.get()!="" and passwordField.get()):
             #encrypt account creation request to server and get response
-            print(firstNameField.get())
-            print(lastNameField.get())
-            print(usernameField.get())
-            print(passwordField.get())
+            glbDatagram = UpdateDatagram(type=1, cardNumber=int(usernameField.get()), password=passwordField.get(), firstName=firstNameField.get(), lastName=lastNameField.get())
+            client_socket.send(pickle.dumps(glbDatagram))
             RegisterPage.destroy()
     
     confirmButton = customtkinter.CTkButton(master =loginFrame, height = 35, width=220, text="Register now", corner_radius=4,fg_color="#872570", text_color="#001848", border_color="#001848", bg_color= "transparent",
@@ -85,7 +108,7 @@ def CreateRegisterPage():
     
     RegisterPage.mainloop()
 
-def CreateMainPage(AccountNumber):
+def CreateMainPage(AccountNumber, Balance):
     #if user authenticated reset current window
     for widget in app.winfo_children():
         widget.destroy()
@@ -96,17 +119,14 @@ def CreateMainPage(AccountNumber):
     loginFrame.place(relx=0.5, rely=0.5, anchor=tkinter.CENTER)
     AccountNumFont = customtkinter.CTkFont('Sans-serif', 40)
     ChequingWordFont = customtkinter.CTkFont('Sans-serif', 20)
-    AccountNumber = customtkinter.CTkLabel(master=loginFrame, text=AccountNumber, font=AccountNumFont, text_color="#872570")
-    AccountNumber.place(relx=0.5, y=80, anchor=tkinter.CENTER)
+    AccountNumberText = customtkinter.CTkLabel(master=loginFrame, text=AccountNumber, font=AccountNumFont, text_color="#872570")
+    AccountNumberText.place(relx=0.5, y=80, anchor=tkinter.CENTER)
     ChequingWordLabel = customtkinter.CTkLabel(master=loginFrame, text="Chequing", font=ChequingWordFont, text_color="#872570")
     ChequingWordLabel.place(relx=0.5, y=40, anchor=tkinter.CENTER)
 
     #account frame
     accountFrame = customtkinter.CTkFrame(master=loginFrame, width=1010, height=450, fg_color=("#872570", "#872570"))
     accountFrame.place(relx=0.5, y=345, anchor=tkinter.CENTER)
-    
-    #get account balance from server
-    Balance = 99999.99
 
     BalanceLabel = customtkinter.CTkLabel(master=accountFrame, text="BALANCE", font=ChequingWordFont, text_color="#001848")
     BalanceLabel.place(relx=0.5, y=40, anchor=tkinter.CENTER)
@@ -118,14 +138,22 @@ def CreateMainPage(AccountNumber):
                                         placeholder_text_color=("white","white"), border_color=("#872570","#872570"), corner_radius=2, font=ChequingWordFont, border_width=1, placeholder_text="Amount")
     amountField.place(relx=0.5, y=200, anchor=tkinter.CENTER)
     #Deposit and Withdraw buttons
+    #verify thar user inputted a double
+    def is_double(s):
+        try:
+            float(s)
+            return True
+        except ValueError:
+            return False
+    
     def Deposit():
         amountTxt = amountField.get()
-        if(amountTxt.isdigit()):
+        if(is_double(amountTxt)):
             amount = float(amountTxt)
             ProcessTransaction(AccountNumber, amount, BalanceNumberLabel, accountFrame)
     def Withdraw():
         amountTxt = amountField.get()
-        if(amountTxt.isdigit()):
+        if(is_double(amountTxt)):
             amount = float(amountTxt)*-1
             ProcessTransaction(AccountNumber, amount, BalanceNumberLabel, accountFrame)
         
@@ -139,9 +167,49 @@ def CreateMainPage(AccountNumber):
 
 def ProcessTransaction(AccountNumber, Amount, BalanceNumberLabel, AccountFrame):
     #send request
-    print(Amount)
-    
+    glbDatagram = UpdateDatagram(type=2, cardNumber=AccountNumber,txAmount=Amount)
+    client_socket.send(pickle.dumps(glbDatagram))
+    data = client_socket.recv(4096)
+    glbDatagram = pickle.loads(data)    
     #if successful update balance on client app
-    Balance = 10000
+    Balance = glbDatagram['balance']
     BalanceNumberLabel.configure(text=Balance)
+'''
+TCP Communication
+'''
+def InitializeTCP():
+    # Client configuration
+    HOST = '127.0.0.1'  # Server IP address
+    PORT = 12345  # Port to connect to
+    # Create a socket object
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Connect to the server
+    client_socket.connect((HOST, PORT))
+    return client_socket
+
+def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="", balance=0, txAmount=0, valid=0):
+    Datagram = {
+    "type": 0,
+    "cardNumber": 0,
+    "password": "",
+    "firstName":"",
+    "lastName":'',
+    "balance": 0.0,
+    "txAmount": 0.0,
+    "valid": 0
+    }
+    Datagram["type"]=type
+    Datagram["cardNumber"]=cardNumber
+    Datagram["password"]=password
+    Datagram["firstName"]=firstName
+    Datagram["lastName"]=lastName
+    Datagram["balance"]=balance
+    Datagram["txAmount"]=txAmount
+    Datagram["valid"]=valid
+    return Datagram
+
+client_socket = InitializeTCP()
+
 CreateLoginPage()
+# Close the connection
+client_socket.close()
