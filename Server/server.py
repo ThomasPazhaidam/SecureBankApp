@@ -9,6 +9,20 @@ import socket
 import threading
 import pickle
 from datetime import datetime
+import sys
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.hazmat.backends import default_backend
+import base64
+import hashlib
+from methods import generate_nonce, decrypt_message, encrypt_message, derive_keys
+
+
+shared_key1 = '855dc24ed356091aa1bca8b694c282b1'
+#Master_Key = ""
+MAC_Key = ""
+Encr_Key = ""
 
 #type -> 1 (registration), 2 (transaction), 3 (sign in)
 glbDatagram = {
@@ -28,27 +42,7 @@ Server GUI
 #selected account id associated with primary key in database
 glbSelectedAccountId = -1
 
-customtkinter.set_appearance_mode("system")
-customtkinter.set_default_color_theme("dark-blue")
-conn = sql.connect('Server/serverdb.db')
-cursor = conn.cursor()
 
-app = customtkinter.CTk()
-app.geometry("1280x720")
-app.title("Secure Bank")
-background = ImageTk.PhotoImage(Image.open("Server/Photos/background.jpg"))
-
-#build main window
-label1 = customtkinter.CTkLabel(master=app, image=background)
-label1.pack()
-loginFrame = customtkinter.CTkFrame(master=label1, width=1024, height=576, fg_color=("#001848", "#001848"))
-loginFrame.place(relx=0.5, rely=0.5, anchor=tkinter.CENTER)
-
-AccountNumFont = customtkinter.CTkFont('Sans-serif', 15)
-AccountNumField = customtkinter.CTkEntry(master=loginFrame, height= 35, width=220, fg_color="#001848",
-                                    placeholder_text_color=("white","white"), border_color=("#872570","#872570"), corner_radius=0, 
-                                    font=AccountNumFont, border_width=1, placeholder_text="Card number")
-AccountNumField.place(x=40, y=40)
 
 def remove_all_rows():
     # Remove all rows from the TreeView
@@ -67,6 +61,7 @@ def GetUserInfo():
         data = cursor.fetchall()
         remove_all_rows()
         count = 0
+
         for rows in data:
             tree.insert(parent='',index='end',iid=count,text="",values=(rows[0],rows[1],rows[2]))
             count+=1
@@ -78,42 +73,7 @@ def GetUserInfo():
         FirstNameLastName.configure(text = "First Name Last Name")        
 
 
-LoginButton = customtkinter.CTkButton(master =loginFrame, height = 35, width=100, text="Get history", corner_radius=4,fg_color="#872570", text_color="#001848", 
-                                      font = AccountNumFont, hover_color="#5a206d", command=GetUserInfo)
-LoginButton.place(x=275, y=40)
-HeadingFont = customtkinter.CTkFont('Sans-serif', 15, weight='bold')
-BalanceHeadingText = customtkinter.CTkLabel(master=loginFrame, text="BALANCE", font=HeadingFont, text_color="#872570") 
-BalanceHeadingText.place(x=40, y=80)
-BalanceFont = customtkinter.CTkFont('Sans-serif', 25, weight='bold')
-BalanceText = customtkinter.CTkLabel(master=loginFrame, text="XXXX.XX", font=BalanceFont, text_color="#872570") 
-BalanceText.place(x=40, y=100)
-NameFont = customtkinter.CTkFont('Sans-serif', 25)
-FirstNameLastName = customtkinter.CTkLabel(master=loginFrame, text="First Name Last Name", font=NameFont, text_color="#872570") 
-FirstNameLastName.place(x=400, y=43)
 
-scrollbar = customtkinter.CTkScrollbar(master=loginFrame, orientation="vertical")
-
-#create tree to display database transaction data
-tree = ttk.Treeview(loginFrame, height=17, yscrollcommand=scrollbar.set)
-tree['columns'] = ("Transaction ID","Transaction", "Time")
-tree.column("#0", width=0,stretch=False)
-tree.column("Transaction ID", anchor="center", width=200)
-tree.column("Transaction", anchor="center", width=200)
-tree.column("Time", anchor="center", width=200)
-tree.heading("Transaction ID", text="Transaction ID", anchor="center")
-tree.heading("Transaction", text="Transaction", anchor="center")
-tree.heading("Time", anchor="center", text="Time")
-tree.place(relx=0.5, y=350, anchor=tkinter.CENTER)
-
-style= ttk.Style()
-style.theme_use("default")
-# Change the background color of the TreeView
-style.configure("Treeview", background="#872570")
-HeadingFont = customtkinter.CTkFont('Sans-serif', 15)
-style.configure("Treeview.Heading", font=HeadingFont, background="#872570")
-
-#configure scrollbar
-scrollbar.configure(command=tree.yview)
 # Function to handle each client connection
 
 '''
@@ -140,6 +100,49 @@ def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="",
     Datagram["valid"]=valid
     return Datagram
 
+def auth_1(client_socket):
+    print("")
+    # NEED SERVER AND CLIENT TO AUTHENTICATE EACH OTHER THEN ESTABLISH SHARED
+    print("AUTHENTICATION STARTED") 
+    input('Press Enter to start Authentication')
+
+    challenge = generate_nonce()
+    print(f'Challenge = {challenge}')
+    client_socket.send(challenge.encode())
+
+    # receive challenge response from client
+    challenge_response = client_socket.recv(4096)
+    print(f'Challenge Response = {challenge_response.decode()}')
+    # compute the expected response of the challenge
+    expected_response = hashlib.sha256(challenge.encode() + shared_key1.encode()).hexdigest()
+    print(f'Expected Response = {expected_response}')
+
+    # now compare expected to received
+    if expected_response.encode() == challenge_response:
+        print("Client authenticated successfully")
+    else:
+        print("Authentication failed")
+
+    # authentication done so generate master key
+    # generate random master key -> encrypt with already defined key
+    master_key = generate_nonce()
+    print(f'Master Key = {master_key}')
+    # encrypt master key with shared key
+    encrypted_master_key = encrypt_message(master_key, shared_key1)
+    client_socket.send(encrypted_master_key)
+    #client_socket.send(master_key.encode())
+
+
+    # derive 2 keys using HKDF for MAC and Encryption
+    encryption_key, mac_key = derive_keys(master_key.encode())
+    Encr_Key = encryption_key
+    MAC_Key = mac_key
+
+    print(f"Encryption key: {Encr_Key}")
+    print(f"MAC key: {MAC_Key}")
+    print("")
+
+
 def handle_client(client_socket, address):
     print(f"Accepted connection from {address}")
 
@@ -156,6 +159,8 @@ def handle_client(client_socket, address):
             verify, balance = VerifyUser(glbDatagram['cardNumber'], glbDatagram['password'])
             glbDatagram=UpdateDatagram(type=3, cardNumber=glbDatagram['cardNumber'],balance=balance, valid=verify)
             client_socket.send(pickle.dumps(glbDatagram))
+            # ADDED AUTH FOR VERIFIED USER
+            auth_1(client_socket)
         elif(glbDatagram['type']==2):
             NewBalance = UpdateBalance(glbDatagram['cardNumber'],glbDatagram['txAmount'])
             glbDatagram = UpdateDatagram(type=2, cardNumber=glbDatagram['cardNumber'],balance=NewBalance)
@@ -226,12 +231,85 @@ def UpdateBalance(CardNumber, Amount):
     connection.close()
     return data[0][0]
 
-# Server configuration
-HOST = '127.0.0.1'  # Localhost
-PORT = 12345  # Port to listen on
 
-# Start the server in a separate thread
-server_thread = threading.Thread(target=start_server, args=(HOST, PORT))
-server_thread.start()
 
-app.mainloop()
+if __name__ == "__main__":
+
+    if len(sys.argv) == 0:
+        print("Please prvoide an arugement for the port number")
+        sys.exit(1)
+    else:
+        port_num = sys.argv[1]
+        port_num = int(port_num)
+        print(f"Port Number = {port_num}")
+
+
+    customtkinter.set_appearance_mode("system")
+    customtkinter.set_default_color_theme("dark-blue")
+    conn = sql.connect('Server/serverdb.db')
+    cursor = conn.cursor()
+
+    app = customtkinter.CTk()
+    app.geometry("1280x720")
+    app.title("Secure Bank")
+    background = ImageTk.PhotoImage(Image.open("Server/Photos/background.jpg"))
+
+    #build main window
+    label1 = customtkinter.CTkLabel(master=app, image=background)
+    label1.pack()
+    loginFrame = customtkinter.CTkFrame(master=label1, width=1024, height=576, fg_color=("#001848", "#001848"))
+    loginFrame.place(relx=0.5, rely=0.5, anchor=tkinter.CENTER)
+
+    AccountNumFont = customtkinter.CTkFont('Sans-serif', 15)
+    AccountNumField = customtkinter.CTkEntry(master=loginFrame, height= 35, width=220, fg_color="#001848", text_color="#FFFFFF",
+                                        placeholder_text_color=("white","white"), border_color=("#872570","#872570"), corner_radius=0, 
+                                        font=AccountNumFont, border_width=1, placeholder_text="Card number")
+    AccountNumField.place(x=40, y=40)
+
+    LoginButton = customtkinter.CTkButton(master =loginFrame, height = 35, width=100, text="Get history", corner_radius=4,fg_color="#872570", text_color="#001848", 
+                                      font = AccountNumFont, hover_color="#5a206d", command=GetUserInfo)
+    LoginButton.place(x=275, y=40)
+    HeadingFont = customtkinter.CTkFont('Sans-serif', 15, weight='bold')
+    BalanceHeadingText = customtkinter.CTkLabel(master=loginFrame, text="BALANCE", font=HeadingFont, text_color="#872570") 
+    BalanceHeadingText.place(x=40, y=80)
+    BalanceFont = customtkinter.CTkFont('Sans-serif', 25, weight='bold')
+    BalanceText = customtkinter.CTkLabel(master=loginFrame, text="XXXX.XX", font=BalanceFont, text_color="#872570") 
+    BalanceText.place(x=40, y=100)
+    NameFont = customtkinter.CTkFont('Sans-serif', 25)
+    FirstNameLastName = customtkinter.CTkLabel(master=loginFrame, text="First Name Last Name", font=NameFont, text_color="#872570") 
+    FirstNameLastName.place(x=400, y=43)
+
+    scrollbar = customtkinter.CTkScrollbar(master=loginFrame, orientation="vertical")
+
+    #create tree to display database transaction data
+    tree = ttk.Treeview(loginFrame, height=17, yscrollcommand=scrollbar.set)
+    tree['columns'] = ("Transaction ID","Transaction", "Time")
+    tree.column("#0", width=0,stretch=False)
+    tree.column("Transaction ID", anchor="center", width=200)
+    tree.column("Transaction", anchor="center", width=200)
+    tree.column("Time", anchor="center", width=200)
+    tree.heading("Transaction ID", text="Transaction ID", anchor="center")
+    tree.heading("Transaction", text="Transaction", anchor="center")
+    tree.heading("Time", anchor="center", text="Time")
+    tree.place(relx=0.5, y=350, anchor=tkinter.CENTER)
+
+    style= ttk.Style()
+    style.theme_use("default")
+    # Change the background color of the TreeView
+    style.configure("Treeview", background="#872570")
+    HeadingFont = customtkinter.CTkFont('Sans-serif', 15)
+    style.configure("Treeview.Heading", font=HeadingFont, background="#872570")
+
+    #configure scrollbar
+    scrollbar.configure(command=tree.yview)
+
+
+    # Server configuration
+    HOST = '127.0.0.1'  # Localhost
+    PORT = 12345  # Port to listen on
+
+    # Start the server in a separate thread
+    server_thread = threading.Thread(target=start_server, args=(HOST, port_num))
+    server_thread.start()
+
+    app.mainloop()
