@@ -58,7 +58,7 @@ def auth_1():
     # CLIENT Respond to the challenge by hashing it together with the shared secret key
     response = hashlib.sha256(challenge + shared_key1.encode()).hexdigest()
     print(f'Challenge Response = {response}')
-    input('Press enter to send challenge response')
+    #input('Press enter to send challenge response') #for debug
     client_socket.send(response.encode())
 
 

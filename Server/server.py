@@ -104,7 +104,7 @@ def auth_1(client_socket):
     print("")
     # NEED SERVER AND CLIENT TO AUTHENTICATE EACH OTHER THEN ESTABLISH SHARED
     print("AUTHENTICATION STARTED") 
-    input('Press Enter to start Authentication')
+    #input('Press Enter to start Authentication')
 
     challenge = generate_nonce()
     print(f'Challenge = {challenge}')
@@ -160,7 +160,9 @@ def handle_client(client_socket, address):
             glbDatagram=UpdateDatagram(type=3, cardNumber=glbDatagram['cardNumber'],balance=balance, valid=verify)
             client_socket.send(pickle.dumps(glbDatagram))
             # ADDED AUTH FOR VERIFIED USER
-            auth_1(client_socket)
+            print(glbDatagram["valid"])
+            if(glbDatagram["valid"]==1):
+                auth_1(client_socket)
         elif(glbDatagram['type']==2):
             NewBalance = UpdateBalance(glbDatagram['cardNumber'],glbDatagram['txAmount'])
             glbDatagram = UpdateDatagram(type=2, cardNumber=glbDatagram['cardNumber'],balance=NewBalance)
