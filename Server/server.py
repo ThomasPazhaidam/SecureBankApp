@@ -14,12 +14,16 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.backends import default_backend
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Random import get_random_bytes
 import base64
 import hashlib
 from methods import generate_nonce, decrypt_message, encrypt_message, derive_keys
 
 
 shared_key1 = '855dc24ed356091aa1bca8b694c282b1'
+key = get_random_bytes(16)
 #Master_Key = ""
 MAC_Key = ""
 Encr_Key = ""
@@ -49,6 +53,20 @@ def remove_all_rows():
     for item in tree.get_children():
         tree.delete(item)
 
+def encrypt_data(data, key):
+    cipher = AES.new(key, AES.MODE_CBC)
+    ct_bytes = cipher.encrypt(pad(data.encode(), AES.block_size))
+    iv = base64.b64encode(cipher.iv).decode('utf-8')
+    ct = base64.b64encode(ct_bytes).decode('utf-8')
+    return iv, ct
+
+def decrypt_data(iv, ct, key):
+    iv = base64.b64decode(iv)
+    ct = base64.b64decode(ct)
+    cipher = AES.new(key, AES.MODE_CBC, iv=iv)
+    pt = unpad(cipher.decrypt(ct), AES.block_size).decode('utf-8')
+    return pt
+
 #get user info from database
 def GetUserInfo():
     cursor.execute(f"SELECT personId,firstName,lastName,balance FROM user WHERE user.accountNumber='{AccountNumField.get()}'")
@@ -59,10 +77,20 @@ def GetUserInfo():
         FirstNameLastName.configure(text = f"{data[0][1]} {data[0][2]}")
         cursor.execute(f"SELECT transactionId, amount, date FROM transactions WHERE userId='{glbSelectedAccountId}'" )
         data = cursor.fetchall()
+        decrypted_data = []
+        for row in data:
+            # Split the IV and ciphertext based on their sizes (IV is 16 bytes long when base64 encoded)
+            iv_amount, ct_amount = row[1][:24], row[1][24:]
+            iv_date, ct_date = row[2][:24], row[2][24:]
+
+            # Decrypt each piece of data
+            amount = decrypt_data(iv_amount, ct_amount, key)
+            date = decrypt_data(iv_date, ct_date, key)
+            decrypted_data.append((row[0], amount, date))
         remove_all_rows()
         count = 0
 
-        for rows in data:
+        for rows in decrypted_data:
             tree.insert(parent='',index='end',iid=count,text="",values=(rows[0],rows[1],rows[2]))
             count+=1
 
@@ -226,7 +254,14 @@ def UpdateBalance(CardNumber, Amount):
     newBalance = round(newBalance,2)
     cur.execute(f"UPDATE user SET balance ='{newBalance}' WHERE user.accountNumber='{CardNumber}'")
     connection.commit()
-    cur.execute(f"INSERT INTO transactions (amount, date, userId) VALUES ('{Amount}','{datetime.now()}','{data[0][1]}')")
+    # Encryption process before inserting log data
+    iv_amount, ct_amount = encrypt_data(str(Amount), key)
+    iv_date, ct_date = encrypt_data(str(datetime.now()), key)
+
+    # Concatenate IV with ciphertext before storing (for simplicity)
+    encrypted_amount = iv_amount + ct_amount
+    encrypted_date = iv_date + ct_date
+    cur.execute(f"INSERT INTO transactions (amount, date, userId) VALUES ('{encrypted_amount}','{encrypted_date}','{data[0][1]}')")
     connection.commit()
     cur.execute(f"SELECT balance FROM user WHERE user.accountNumber='{CardNumber}'")
     data = cur.fetchall()
