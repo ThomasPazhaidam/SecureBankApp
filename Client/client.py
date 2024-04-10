@@ -10,6 +10,10 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.backends import default_backend
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Random import get_random_bytes
+from Crypto.Hash import HMAC, SHA256
 import base64
 import hashlib
 from methods import generate_nonce, decrypt_message, encrypt_message, derive_keys
@@ -71,7 +75,9 @@ def auth_1():
 
     # derive 2 keys using HKDF for MAC and Encryption
     encryption_key, mac_key = derive_keys(master_key.encode())
+    global Encr_Key
     Encr_Key = encryption_key
+    global MAC_Key
     MAC_Key = mac_key
 
     print(f"Encryption key: {Encr_Key}")
@@ -222,9 +228,24 @@ def CreateMainPage(AccountNumber, Balance):
                                             border_width= 0, font = ChequingWordFont, hover_color="#5a206d", command=Withdraw)
     WithdrawButton.place(relx=0.5, y=300, anchor=tkinter.CENTER)
 
+def encrypt_message(data, key):
+    cipher = AES.new(key, AES.MODE_CBC)
+    ct_bytes = cipher.encrypt(pad(data.encode('utf-8'), AES.block_size))
+    iv = base64.b64encode(cipher.iv).decode('utf-8')
+    ct = base64.b64encode(ct_bytes).decode('utf-8')
+    return iv, ct
+
+def generate_mac(message, key):
+    h = HMAC.new(key, digestmod=SHA256)
+    h.update(message.encode('utf-8'))
+    return base64.b64encode(h.digest()).decode('utf-8')
+
 def ProcessTransaction(AccountNumber, Amount, BalanceNumberLabel, AccountFrame):
+    transaction_data = f"{AccountNumber}:{Amount}"
+    iv, encrypted_data = encrypt_message(transaction_data, bytes.fromhex(Encr_Key))
+    mac = generate_mac(encrypted_data, bytes.fromhex(MAC_Key))
     #send request
-    glbDatagram = UpdateDatagram(type=2, cardNumber=AccountNumber,txAmount=Amount)
+    glbDatagram = UpdateDatagram(type=2, encrypted_data=encrypted_data, iv=iv, mac=mac)
     client_socket.send(pickle.dumps(glbDatagram))
     data = client_socket.recv(4096)
     glbDatagram = pickle.loads(data)    
@@ -245,7 +266,7 @@ def InitializeTCP():
     client_socket.connect((HOST, port_num))
     return client_socket
 
-def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="", balance=0, txAmount=0, valid=0):
+def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="", balance=0, txAmount=0, valid=0, encrypted_data="", iv="", mac=""):
     Datagram = {
     "type": 0,
     "cardNumber": 0,
@@ -254,7 +275,10 @@ def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="",
     "lastName":'',
     "balance": 0.0,
     "txAmount": 0.0,
-    "valid": 0
+    "valid": 0,
+    "encrypted_data": "",
+    "iv": '',
+    "mac": ''
     }
     Datagram["type"]=type
     Datagram["cardNumber"]=cardNumber
@@ -264,6 +288,9 @@ def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="",
     Datagram["balance"]=balance
     Datagram["txAmount"]=txAmount
     Datagram["valid"]=valid
+    Datagram["encrypted_data"]=encrypted_data
+    Datagram["iv"]=iv
+    Datagram["mac"]=mac
     return Datagram
 
 

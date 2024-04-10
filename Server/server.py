@@ -17,13 +17,14 @@ from cryptography.hazmat.backends import default_backend
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Random import get_random_bytes
+from Crypto.Hash import HMAC, SHA256
 import base64
 import hashlib
 from methods import generate_nonce, decrypt_message, encrypt_message, derive_keys
 
 
 shared_key1 = '855dc24ed356091aa1bca8b694c282b1'
-key = get_random_bytes(16)
+key = b'\x9f\x12\x34\x56\x78\x9a\xbc\xde\xf0\x12\x34\x56\x78\x9a\xbc\xde'
 #Master_Key = ""
 MAC_Key = ""
 Encr_Key = ""
@@ -67,6 +68,19 @@ def decrypt_data(iv, ct, key):
     pt = unpad(cipher.decrypt(ct), AES.block_size).decode('utf-8')
     return pt
 
+def decrypt_message(iv, ct, key):
+    iv = base64.b64decode(iv)
+    ct = base64.b64decode(ct)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    pt = unpad(cipher.decrypt(ct), AES.block_size).decode('utf-8')
+    return pt
+
+def verify_mac(message, received_mac, key):
+    h = HMAC.new(key, digestmod=SHA256)
+    h.update(message.encode('utf-8'))
+    calculated_mac = base64.b64encode(h.digest()).decode('utf-8')
+    return received_mac == calculated_mac
+
 #get user info from database
 def GetUserInfo():
     cursor.execute(f"SELECT personId,firstName,lastName,balance FROM user WHERE user.accountNumber='{AccountNumField.get()}'")
@@ -107,7 +121,7 @@ def GetUserInfo():
 '''
 TCP Communication
 '''
-def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="", balance=0, txAmount=0, valid=0):
+def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="", balance=0, txAmount=0, valid=0, encrypted_data="", iv="", mac=""):
     Datagram = {
     "type": 0,
     "cardNumber": 0,
@@ -116,7 +130,10 @@ def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="",
     "lastName":'',
     "balance": 0.0,
     "txAmount": 0.0,
-    "valid": 0
+    "valid": 0,
+    "encrypted_data": "",
+    "iv": '',
+    "mac": ''
     }
     Datagram["type"]=type
     Datagram["cardNumber"]=cardNumber
@@ -126,6 +143,9 @@ def UpdateDatagram(type=0, cardNumber=0, password="", firstName="", lastName="",
     Datagram["balance"]=balance
     Datagram["txAmount"]=txAmount
     Datagram["valid"]=valid
+    Datagram["encrypted_data"]=encrypted_data
+    Datagram["iv"]=iv
+    Datagram["mac"]=mac
     return Datagram
 
 def auth_1(client_socket):
@@ -163,7 +183,9 @@ def auth_1(client_socket):
 
     # derive 2 keys using HKDF for MAC and Encryption
     encryption_key, mac_key = derive_keys(master_key.encode())
+    global Encr_Key
     Encr_Key = encryption_key
+    global MAC_Key
     MAC_Key = mac_key
 
     print(f"Encryption key: {Encr_Key}")
@@ -192,9 +214,24 @@ def handle_client(client_socket, address):
             if(glbDatagram["valid"]==1):
                 auth_1(client_socket)
         elif(glbDatagram['type']==2):
-            NewBalance = UpdateBalance(glbDatagram['cardNumber'],glbDatagram['txAmount'])
-            glbDatagram = UpdateDatagram(type=2, cardNumber=glbDatagram['cardNumber'],balance=NewBalance)
-            client_socket.send(pickle.dumps(glbDatagram))
+            encrypted_data = glbDatagram['encrypted_data']
+            iv = glbDatagram['iv']
+            received_mac = glbDatagram['mac']
+            if verify_mac(encrypted_data, received_mac, bytes.fromhex(MAC_Key)):
+                # MAC is valid, proceed with decryption
+                transaction_data = decrypt_message(iv, encrypted_data, bytes.fromhex(Encr_Key))
+                
+                # Assuming transaction_data format is "AccountNumber:Amount"
+                account_number, amount = transaction_data.split(":")
+                
+                # Convert amount to the appropriate type as needed, e.g., int or float
+                amount = float(amount)  # Example conversion
+                NewBalance = UpdateBalance(account_number, amount)
+                glbDatagram = UpdateDatagram(type=2, cardNumber=account_number,balance=NewBalance)
+                client_socket.send(pickle.dumps(glbDatagram))
+            else:
+                # MAC verification failed, handle as needed
+                print("MAC verification failed.")
 
 
     # Close the connection
