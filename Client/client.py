@@ -198,7 +198,7 @@ def CreateMainPage(AccountNumber, Balance):
     DepositWithdrawText = customtkinter.CTkLabel(master=accountFrame, text="DEPOSIT | WITHDRAW", font=ChequingWordFont, text_color="#001848") 
     DepositWithdrawText.place(relx=0.5, y=160, anchor=tkinter.CENTER) 
     amountField = customtkinter.CTkEntry(master=accountFrame, height= 35, width=240, fg_color="#001848",
-                                        placeholder_text_color=("white","white"), border_color=("#872570","#872570"), corner_radius=2, font=ChequingWordFont, border_width=1, placeholder_text="Amount")
+                                        placeholder_text_color=("white","white"), border_color=("#872570","#872570"), corner_radius=2, font=ChequingWordFont, border_width=1, placeholder_text="Amount", text_color="white")
     amountField.place(relx=0.5, y=200, anchor=tkinter.CENTER)
     #Deposit and Withdraw buttons
     #verify thar user inputted a double
