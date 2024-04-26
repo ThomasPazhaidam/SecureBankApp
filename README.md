@@ -1,5 +1,7 @@
 Secure Banking Application Consisting of A Client and Bank Server.
 
+Run application using arbritrary port number as a command line argument.
+
 Use MAC to authenticate client and server then distribute master private key.
 
 Master private key used to encrypt and decrypt future transactions. MAC used to verify identity of sender.
