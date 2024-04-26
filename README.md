@@ -1,4 +1,4 @@
-Secure Banking Application Consisting of A Client and Bank Server.
+#Secure Banking Application Consisting of A Client and Bank Server.
 
 Run application using arbritrary port number as a command line argument.
 
